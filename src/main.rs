@@ -1,13 +1,15 @@
+use chrono::Local;
 use color_eyre::Result;
 use crossterm::event::{self, KeyCode, KeyEvent};
+use message::{Message, MessageList};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::Style,
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Widget, Wrap},
+    widgets::{Block, Borders, Paragraph, Widget},
     DefaultTerminal,
 };
+mod message;
 use tui_textarea::TextArea;
 
 #[derive(Debug, Default)]
@@ -114,23 +116,26 @@ impl Widget for &mut App {
         status.render(chunks[0], buf);
 
         // MIDDLE
-
-        let text = vec![
-            Line::from(vec![
-                Span::raw("Connected to webscoket successfully"),
-                Span::styled("line", Style::new()),
-                ".".into(),
-            ]),
-            Line::from("Second line"),
-            "Third line".into(),
+        let msgs = vec![
+            Message {
+                content: "Connected to websocket success".to_string(),
+                kind: message::MessageKind::OUTGOING,
+                time: Local::now(),
+            },
+            Message {
+                content: "Connected to websocket success".to_string(),
+                kind: message::MessageKind::OUTGOING,
+                time: Local::now(),
+            },
+            Message {
+                content: "vaasu annan".to_string(),
+                kind: message::MessageKind::INCOMING,
+                time: Local::now(),
+            },
         ];
 
-        Paragraph::new(text)
-            .block(Block::bordered().title("Paragraph"))
-            .style(Style::new())
-            .alignment(Alignment::Center)
-            .wrap(Wrap { trim: true })
-            .render(chunks[1], buf);
+        let msg_list: MessageList = MessageList::new(msgs);
+        msg_list.render(chunks[1].inner(Margin::new(0, 1)), buf);
 
         ///// Bottom
         let bottom_border = Block::default().borders(Borders::ALL);
