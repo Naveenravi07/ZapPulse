@@ -3,11 +3,12 @@ use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{palette::tailwind::SLATE, Color, Stylize},
-    widgets::{HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
+    text::{Line, Span},
+    widgets::{
+        Block, Borders, HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget,
+    },
 };
 use std::fmt::{self, Display};
-
-
 
 #[derive(Debug, Clone)]
 pub enum MessageKind {
@@ -28,10 +29,8 @@ pub struct MessageList {
     pub state: ListState,
 }
 
-
 const NORMAL_ROW_BG: Color = SLATE.c950;
 const ALT_ROW_BG_COLOR: Color = SLATE.c900;
-
 
 const fn alternate_colors(i: usize) -> Color {
     if i % 2 == 0 {
@@ -43,11 +42,46 @@ const fn alternate_colors(i: usize) -> Color {
 
 impl From<&Message> for ListItem<'_> {
     fn from(msg: &Message) -> Self {
-        let line = format!("{}{}{}", msg.kind, msg.content, msg.time.format("%H:%M"));
+        
+        let terminal_width = match crossterm::terminal::size() {
+            Ok((width, _)) => width as usize,
+            Err(_) => 80, 
+        };
+
+        let kind_width = 12;
+        let time_width = 10;
+        let content_width = terminal_width.saturating_sub(kind_width + time_width + 2);
+
+        let status = Span::styled(
+            format!(
+                "{:<kind_width$}",
+                msg.kind.to_string(),
+                kind_width = kind_width
+            ),
+            SLATE.c100,
+        );
+
+        let content = Span::styled(
+            format!(
+                "{:^content_width$}",
+                msg.content,
+                content_width = content_width
+            ),
+            SLATE.c100, 
+        );
+
+        let time = Span::styled(
+            format!(
+                "{:<time_width$}",
+                msg.time.format("%H:%M"),
+                time_width = time_width
+            ),
+            SLATE.c100,
+        );
+        let line = Line::from(vec![status, content, time]);
         ListItem::new(line)
     }
 }
-
 
 impl Display for MessageKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -57,7 +91,6 @@ impl Display for MessageKind {
         }
     }
 }
-
 
 impl MessageList {
     pub fn new(messages: Vec<Message>) -> Self {
@@ -75,9 +108,7 @@ impl MessageList {
     }
 }
 
-
 impl Widget for &mut MessageList {
-
     fn render(self, area: Rect, buf: &mut Buffer) {
         let items: Vec<ListItem> = self
             .messages
@@ -90,6 +121,7 @@ impl Widget for &mut MessageList {
             .collect();
 
         let list = List::new(items)
+            .block(Block::new().title("Messages").borders(Borders::ALL))
             .highlight_symbol(">")
             .highlight_spacing(HighlightSpacing::Always);
 

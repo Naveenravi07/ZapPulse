@@ -34,35 +34,30 @@ impl Default for TerminalMode {
 
 impl Default for App {
     fn default() -> Self {
-        let mut msgs = vec![
+        let msgs = vec![
             Message {
                 content: "Connected to websocket success".to_string(),
                 kind: message::MessageKind::OUTGOING,
                 time: Local::now(),
             },
             Message {
-                content: "UMBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
+                content: "Got Msg 192917929 From Shastri".to_string(),
                 kind: message::MessageKind::OUTGOING,
                 time: Local::now(),
             },
             Message {
-                content: "HAHAHAHHAHAHAHAHHAHAHAHAHAHAH".to_string(),
+                content: "Disconnected from websocket".to_string(),
                 kind: message::MessageKind::OUTGOING,
                 time: Local::now(),
             },
         ];
 
-        if let Some(last_msg) = msgs.last_mut() {
-            last_msg.content = "Disconnected from websocket".to_string();
-            last_msg.kind = MessageKind::INCOMING;
-        }
-
         let msg_list: MessageList = MessageList::new(msgs);
-        Self{
+        Self {
             messages: msg_list,
             exit: false,
             mode: TerminalMode::NORMAL,
-            textarea: TextArea::default()
+            textarea: TextArea::default(),
         }
     }
 }
@@ -156,11 +151,12 @@ impl Widget for &mut App {
         title.render(chunks[0], buf);
         status.render(chunks[0], buf);
 
+
+
         // MIDDLE
-        self.messages.render(
-            chunks[1].inner(Margin::new(0, 2)),
-            buf,
-        );
+        self.messages
+            .render(chunks[1].inner(Margin::new(0, 2)), buf);
+
 
         ///// Bottom
         let bottom_border = Block::default().borders(Borders::ALL);
