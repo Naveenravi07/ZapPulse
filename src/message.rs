@@ -1,112 +1,98 @@
 use chrono::{DateTime, Local};
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Rect},
-    text::Text,
-    widgets::{Block, Borders, List, ListItem, ListState, Widget},
+    layout::Rect,
+    style::{palette::tailwind::SLATE, Color, Stylize},
+    widgets::{HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
 };
 use std::fmt::{self, Display};
 
+
+
+#[derive(Debug, Clone)]
 pub enum MessageKind {
     OUTGOING,
     INCOMING,
 }
 
-impl Display for MessageKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MessageKind::OUTGOING => write!(f, "^"),
-            MessageKind::INCOMING => write!(f, "V"),
-        }
-    }
-}
-
+#[derive(Debug, Clone)]
 pub struct Message {
     pub content: String,
     pub kind: MessageKind,
     pub time: DateTime<Local>,
 }
 
+#[derive(Default, Debug)]
 pub struct MessageList {
     pub messages: Vec<Message>,
     pub state: ListState,
 }
 
-impl MessageList {
-    pub fn new(messages: Vec<Message>) -> Self {
-        let mut state = ListState::default();
-        state.select(Some(0));
-        MessageList { messages, state }
-    }
 
-    pub fn next(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.messages.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
+const NORMAL_ROW_BG: Color = SLATE.c950;
+const ALT_ROW_BG_COLOR: Color = SLATE.c900;
 
-    pub fn previous(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.messages.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
+
+const fn alternate_colors(i: usize) -> Color {
+    if i % 2 == 0 {
+        NORMAL_ROW_BG
+    } else {
+        ALT_ROW_BG_COLOR
     }
 }
 
-impl Widget for &MessageList {
+impl From<&Message> for ListItem<'_> {
+    fn from(msg: &Message) -> Self {
+        let line = format!("{}{}{}", msg.kind, msg.content, msg.time.format("%H:%M"));
+        ListItem::new(line)
+    }
+}
+
+
+impl Display for MessageKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageKind::OUTGOING => write!(f, "⬆"),
+            MessageKind::INCOMING => write!(f, "⬇"),
+        }
+    }
+}
+
+
+impl MessageList {
+    pub fn new(messages: Vec<Message>) -> Self {
+        let mut state = ListState::default();
+        *state.offset_mut() = 0;
+        state.select(Some(1));
+        MessageList { messages, state }
+    }
+
+    pub fn select_next(&mut self) {
+        self.state.select_next();
+    }
+    pub fn select_previous(&mut self) {
+        self.state.select_previous();
+    }
+}
+
+
+impl Widget for &mut MessageList {
+
     fn render(self, area: Rect, buf: &mut Buffer) {
         let items: Vec<ListItem> = self
             .messages
             .iter()
-            .map(|msg| {
-                let layout = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([
-                        Constraint::Percentage(2),
-                        Constraint::Percentage(94),
-                        Constraint::Percentage(3),
-                    ])
-                    .split(area);
-
-                let type_width = layout[0].width as usize;
-                let content_width = layout[1].width as usize;
-                let time_width = layout[2].width as usize;
-
-                let line = format!(
-                    "{:<type_width$}{:^content_width$}{:>time_width$}",
-                    msg.kind,
-                    msg.content,
-                    msg.time.format("%H:%M"),
-                    type_width = type_width,
-                    content_width = content_width,
-                    time_width = time_width,
-                );
-
-                ListItem::new(Text::raw(format!("{}\n", line)))
+            .enumerate()
+            .map(|(i, message)| {
+                let color = alternate_colors(i);
+                ListItem::from(message).bg(color)
             })
             .collect();
 
-        List::new(items)
-            .block(Block::default().title("Messages").borders(Borders::ALL))
-            .render(area, buf);
+        let list = List::new(items)
+            .highlight_symbol(">")
+            .highlight_spacing(HighlightSpacing::Always);
+
+        StatefulWidget::render(list, area, buf, &mut self.state);
     }
 }
-
-
-
-

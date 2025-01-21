@@ -1,7 +1,7 @@
 use chrono::Local;
 use color_eyre::Result;
 use crossterm::event::{self, KeyCode, KeyEvent};
-use message::{Message, MessageList};
+use message::{Message, MessageKind, MessageList};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
@@ -12,9 +12,10 @@ use ratatui::{
 mod message;
 use tui_textarea::TextArea;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct App {
     textarea: TextArea<'static>,
+    messages: MessageList,
     mode: TerminalMode,
     exit: bool,
 }
@@ -28,6 +29,41 @@ enum TerminalMode {
 impl Default for TerminalMode {
     fn default() -> Self {
         Self::NORMAL
+    }
+}
+
+impl Default for App {
+    fn default() -> Self {
+        let mut msgs = vec![
+            Message {
+                content: "Connected to websocket success".to_string(),
+                kind: message::MessageKind::OUTGOING,
+                time: Local::now(),
+            },
+            Message {
+                content: "UMBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
+                kind: message::MessageKind::OUTGOING,
+                time: Local::now(),
+            },
+            Message {
+                content: "HAHAHAHHAHAHAHAHHAHAHAHAHAHAH".to_string(),
+                kind: message::MessageKind::OUTGOING,
+                time: Local::now(),
+            },
+        ];
+
+        if let Some(last_msg) = msgs.last_mut() {
+            last_msg.content = "Disconnected from websocket".to_string();
+            last_msg.kind = MessageKind::INCOMING;
+        }
+
+        let msg_list: MessageList = MessageList::new(msgs);
+        Self{
+            messages: msg_list,
+            exit: false,
+            mode: TerminalMode::NORMAL,
+            textarea: TextArea::default()
+        }
     }
 }
 
@@ -69,21 +105,26 @@ impl App {
         Ok(())
     }
 
+    // For handling all the global keybinds
     fn handle_key_events(&mut self, keyevent: KeyEvent) -> Result<()> {
         match keyevent.code {
             KeyCode::Char('q') => self.exit = true,
             KeyCode::Char('i') => self.mode = TerminalMode::INPUT,
+            KeyCode::Char('j') => {
+                self.messages.select_next();
+            }
+            KeyCode::Char('k') => self.messages.select_previous(),
             _ => {}
         }
         Ok(())
     }
 
+    // For inserting into the editor
     fn handle_msg_input(&mut self, keyevent: KeyEvent) -> Result<()> {
         if let KeyCode::Esc = keyevent.code {
             self.mode = TerminalMode::NORMAL;
             return Ok(());
         }
-
         self.textarea.input(keyevent);
         return Ok(());
     }
@@ -104,7 +145,7 @@ impl Widget for &mut App {
             .split(area);
 
         ////// TOP
-        let title = Paragraph::new("Futre-WS")
+        let title = Paragraph::new("FUTURE-WS")
             .style(Style::default())
             .alignment(ratatui::layout::Alignment::Center);
 
@@ -116,26 +157,10 @@ impl Widget for &mut App {
         status.render(chunks[0], buf);
 
         // MIDDLE
-        let msgs = vec![
-            Message {
-                content: "Connected to websocket success".to_string(),
-                kind: message::MessageKind::OUTGOING,
-                time: Local::now(),
-            },
-            Message {
-                content: "Connected to websocket success".to_string(),
-                kind: message::MessageKind::OUTGOING,
-                time: Local::now(),
-            },
-            Message {
-                content: "vaasu annan".to_string(),
-                kind: message::MessageKind::INCOMING,
-                time: Local::now(),
-            },
-        ];
-
-        let msg_list: MessageList = MessageList::new(msgs);
-        msg_list.render(chunks[1].inner(Margin::new(0, 1)), buf);
+        self.messages.render(
+            chunks[1].inner(Margin::new(0, 2)),
+            buf,
+        );
 
         ///// Bottom
         let bottom_border = Block::default().borders(Borders::ALL);
