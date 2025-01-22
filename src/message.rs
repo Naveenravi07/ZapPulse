@@ -2,7 +2,10 @@ use chrono::{DateTime, Local};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{palette::tailwind::SLATE, Color, Stylize},
+    style::{
+        palette::tailwind::{SLATE, STONE},
+        Color, Modifier, Stylize,
+    },
     text::{Line, Span},
     widgets::{
         Block, Borders, HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget,
@@ -29,23 +32,14 @@ pub struct MessageList {
     pub state: ListState,
 }
 
-const NORMAL_ROW_BG: Color = SLATE.c950;
-const ALT_ROW_BG_COLOR: Color = SLATE.c900;
-
-const fn alternate_colors(i: usize) -> Color {
-    if i % 2 == 0 {
-        NORMAL_ROW_BG
-    } else {
-        ALT_ROW_BG_COLOR
-    }
-}
+const NORMAL_ROW_BG: Color = SLATE.c900;
+const ALT_ROW_BG_COLOR: Color = SLATE.c950;
 
 impl From<&Message> for ListItem<'_> {
     fn from(msg: &Message) -> Self {
-        
         let terminal_width = match crossterm::terminal::size() {
             Ok((width, _)) => width as usize,
-            Err(_) => 80, 
+            Err(_) => 80,
         };
 
         let kind_width = 12;
@@ -67,7 +61,7 @@ impl From<&Message> for ListItem<'_> {
                 msg.content,
                 content_width = content_width
             ),
-            SLATE.c100, 
+            SLATE.c100,
         );
 
         let time = Span::styled(
@@ -78,6 +72,7 @@ impl From<&Message> for ListItem<'_> {
             ),
             SLATE.c100,
         );
+
         let line = Line::from(vec![status, content, time]);
         ListItem::new(line)
     }
@@ -96,7 +91,7 @@ impl MessageList {
     pub fn new(messages: Vec<Message>) -> Self {
         let mut state = ListState::default();
         *state.offset_mut() = 0;
-        state.select(Some(1));
+        state.select(Some(0));
         MessageList { messages, state }
     }
 
@@ -115,8 +110,15 @@ impl Widget for &mut MessageList {
             .iter()
             .enumerate()
             .map(|(i, message)| {
-                let color = alternate_colors(i);
-                ListItem::from(message).bg(color)
+                if let Some(selected_idx) = self.state.selected() {
+                    if i == selected_idx {
+                        ListItem::from(message).bg(ALT_ROW_BG_COLOR)
+                    } else {
+                        ListItem::from(message).bg(NORMAL_ROW_BG)
+                    }
+                } else {
+                    ListItem::from(message).bg(ALT_ROW_BG_COLOR)
+                }
             })
             .collect();
 

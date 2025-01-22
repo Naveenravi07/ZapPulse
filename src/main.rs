@@ -1,7 +1,8 @@
-use chrono::Local;
+use chrono::{Date, DateTime, Local};
 use color_eyre::Result;
+use crossbeam_channel::Sender;
 use crossterm::event::{self, KeyCode, KeyEvent};
-use message::{Message, MessageKind, MessageList};
+use message::{Message, MessageList};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
@@ -9,7 +10,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget},
     DefaultTerminal,
 };
+use std::env::{self};
 mod message;
+mod websocket;
 use tui_textarea::TextArea;
 
 #[derive(Debug)]
@@ -17,6 +20,7 @@ struct App {
     textarea: TextArea<'static>,
     messages: MessageList,
     mode: TerminalMode,
+    tx: Option<Sender<Message>>,
     exit: bool,
 }
 
@@ -41,7 +45,7 @@ impl Default for App {
                 time: Local::now(),
             },
             Message {
-                content: "Got Msg 192917929 From Shastri".to_string(),
+                content: "Got msg 192917929 from shastri".to_string(),
                 kind: message::MessageKind::OUTGOING,
                 time: Local::now(),
             },
@@ -58,14 +62,35 @@ impl Default for App {
             exit: false,
             mode: TerminalMode::NORMAL,
             textarea: TextArea::default(),
+            tx: None,
         }
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     color_eyre::install()?;
+
+    let arguments: Vec<String> = env::args().collect();
+    if arguments.len() != 2 {
+        eprintln!("\n Error occured. Program requires one argument ");
+        eprintln!("\n Usage cargo run <url> ");
+        std::process::exit(1);
+    }
+
+    let (tx, rx) = crossbeam_channel::unbounded::<Message>();
+    let (tx_cl, rx_cl) = (tx.clone(), rx.clone());
+
+    websocket::start_websocket(arguments[1].to_string(), tx_cl, rx_cl)
+        .await
+        .unwrap();
+
     let terminal = ratatui::init();
-    let result = App::default().run(terminal);
+    let mut app = App::default();
+
+    app.tx = Some(tx);
+
+    let result = app.run(terminal);
     ratatui::restore();
     result
 }
@@ -76,7 +101,6 @@ impl App {
             terminal.draw(|frame| self.draw(frame))?;
             self.handle_events()?;
         }
-
         Ok(())
     }
 
@@ -105,10 +129,9 @@ impl App {
         match keyevent.code {
             KeyCode::Char('q') => self.exit = true,
             KeyCode::Char('i') => self.mode = TerminalMode::INPUT,
-            KeyCode::Char('j') => {
-                self.messages.select_next();
-            }
+            KeyCode::Char('j') => self.messages.select_next(),
             KeyCode::Char('k') => self.messages.select_previous(),
+            KeyCode::Enter => self.send_curr_inp()?,
             _ => {}
         }
         Ok(())
@@ -120,7 +143,25 @@ impl App {
             self.mode = TerminalMode::NORMAL;
             return Ok(());
         }
+
         self.textarea.input(keyevent);
+        return Ok(());
+    }
+
+    fn send_curr_inp(&mut self) -> Result<()> {
+        if self.textarea.lines().len() < 1 {
+            return Ok(());
+        };
+
+        if let Some(tx) = &self.tx {
+            tx.send(Message {
+                kind: message::MessageKind::OUTGOING,
+                content: self.textarea.lines().join(" "),
+                time: DateTime::default(),
+            })
+            .unwrap();
+            self.textarea.delete_line_by_head();
+        }
         return Ok(());
     }
 }
@@ -140,7 +181,7 @@ impl Widget for &mut App {
             .split(area);
 
         ////// TOP
-        let title = Paragraph::new("FUTURE-WS")
+        let title = Paragraph::new("Kyu-Tui")
             .style(Style::default())
             .alignment(ratatui::layout::Alignment::Center);
 
@@ -151,12 +192,9 @@ impl Widget for &mut App {
         title.render(chunks[0], buf);
         status.render(chunks[0], buf);
 
-
-
         // MIDDLE
         self.messages
-            .render(chunks[1].inner(Margin::new(0, 2)), buf);
-
+            .render(chunks[1].inner(Margin::new(0, 1)), buf);
 
         ///// Bottom
         let bottom_border = Block::default().borders(Borders::ALL);
