@@ -3,8 +3,8 @@ use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{
-        palette::tailwind::{SLATE, STONE},
-        Color, Modifier, Stylize,
+        palette::tailwind::SLATE,
+        Color, Stylize,
     },
     text::{Line, Span},
     widgets::{
