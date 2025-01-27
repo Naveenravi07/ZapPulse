@@ -2,7 +2,10 @@ use chrono::{DateTime, Local};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{palette::tailwind::SLATE, Color, Stylize},
+    style::{
+        palette::{material::{GREEN, RED}, tailwind::SLATE},
+        Color, Stylize,
+    },
     text::{Line, Span},
     widgets::{
         Block, Borders, HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget,
@@ -12,6 +15,9 @@ use std::{
     fmt::{self, Display},
     sync::{Arc, RwLock},
 };
+
+
+
 
 #[derive(Debug, Clone)]
 pub enum MessageKind {
@@ -46,14 +52,15 @@ impl From<&Message> for ListItem<'_> {
         let time_width = 10;
         let content_width = terminal_width.saturating_sub(kind_width + time_width + 2);
 
-        let status = Span::styled(
-            format!(
-                "{:<kind_width$}",
-                msg.kind.to_string(),
-                kind_width = kind_width
-            ),
-            SLATE.c100,
+        let status_txt = format!(
+            "{:<kind_width$}",
+            msg.kind.to_string(),
+            kind_width = kind_width
         );
+        let status = match msg.kind {
+            MessageKind::OUTGOING => Span::styled(status_txt, RED.c900),
+            MessageKind::INCOMING => Span::styled(status_txt, GREEN.c900),
+        };
 
         let content = Span::styled(
             format!(

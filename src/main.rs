@@ -1,6 +1,6 @@
 use chrono::{DateTime, Local};
 use color_eyre::Result;
-use crossterm::event::{self,KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent};
 use events::EventHandler;
 use futures_util::{
     stream::{SplitSink, SplitStream, StreamExt},
@@ -26,6 +26,9 @@ mod events;
 mod message;
 use events::Event;
 
+
+
+
 #[derive(Debug)]
 struct App {
     textarea: TextArea<'static>,
@@ -50,13 +53,7 @@ impl Default for TerminalMode {
 
 impl Default for App {
     fn default() -> Self {
-        let msgs = vec![Message {
-            content: "Connected to websocket success".to_string(),
-            kind: message::MessageKind::OUTGOING,
-            time: Local::now(),
-        }];
-
-        let msg_list: MessageList = MessageList::new(msgs);
+        let msg_list: MessageList = MessageList::new(Vec::new());
         Self {
             messages: msg_list,
             exit: false,
@@ -154,7 +151,7 @@ impl App {
     }
 
     async fn send_curr_inp(&mut self) -> Result<()> {
-        if self.textarea.lines().len() < 1 {
+        if self.textarea.lines().join("").len() < 1 {
             return Ok(());
         };
         if let Some(ws) = &mut self.write {
@@ -189,11 +186,11 @@ impl Widget for &mut App {
             .split(area);
 
         ////// TOP
-        let title = Paragraph::new("Kyu-Tui")
+        let title = Paragraph::new("ZapPulse")
             .style(Style::default())
             .alignment(ratatui::layout::Alignment::Center);
 
-        let status = Paragraph::new("Connected")
+        let status = Paragraph::new("🌐 Connected")
             .style(Style::default())
             .alignment(Alignment::Right);
 
@@ -221,6 +218,7 @@ impl Widget for &mut App {
         self.textarea.render(inner_bottom_area, buf);
     }
 }
+
 
 async fn listen_messages(
     reader: Option<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
