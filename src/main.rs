@@ -1,6 +1,7 @@
 use chrono::{DateTime, Local};
 use color_eyre::Result;
-use crossterm::event::{self, KeyCode, KeyEvent};
+use crossterm::event::{self,KeyCode, KeyEvent};
+use events::EventHandler;
 use futures_util::{
     stream::{SplitSink, SplitStream, StreamExt},
     SinkExt,
@@ -15,20 +16,23 @@ use ratatui::{
 };
 use std::{
     env::{self},
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::Message as TungSteniteMsg;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
-mod message;
 use tui_textarea::TextArea;
+mod events;
+mod message;
+use events::Event;
 
 #[derive(Debug)]
 struct App {
     textarea: TextArea<'static>,
-    messages: Arc<Mutex<MessageList>>,
+    messages: MessageList,
     mode: TerminalMode,
     write: Option<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, TungSteniteMsg>>,
+    events: Option<EventHandler>,
     exit: bool,
 }
 
@@ -54,11 +58,12 @@ impl Default for App {
 
         let msg_list: MessageList = MessageList::new(msgs);
         Self {
-            messages: Arc::new(Mutex::new(msg_list)),
+            messages: msg_list,
             exit: false,
             mode: TerminalMode::NORMAL,
             textarea: TextArea::default(),
             write: None,
+            events: None,
         }
     }
 }
@@ -74,6 +79,7 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
+    let events = events::EventHandler::new();
     let (ws_stream, _) = connect_async(arguments[1].clone()).await.unwrap();
     let (write, read) = ws_stream.split();
 
@@ -81,9 +87,11 @@ async fn main() -> Result<()> {
     let mut app = App::default();
 
     app.write = Some(write);
-    listen_messages(Some(read), app.messages.clone())
-        .await
-        .unwrap();
+    app.events = Some(events);
+
+    if let Err(_e) = listen_messages(Some(read), Arc::clone(&app.messages.messages)).await {
+        std::process::exit(1);
+    }
 
     let result = app.run(terminal);
     let _ = result.await;
@@ -93,9 +101,11 @@ async fn main() -> Result<()> {
 
 impl App {
     async fn run(&mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        let mut event = self.events.take().unwrap();
         while !self.exit {
+            let task = event.next().await;
+            self.handle_events(task.unwrap()).await.unwrap();
             terminal.draw(|frame| self.draw(frame))?;
-            self.handle_events().await?;
         }
         Ok(())
     }
@@ -104,10 +114,9 @@ impl App {
         frame.render_widget(self, frame.area());
     }
 
-    async fn handle_events(&mut self) -> Result<()> {
-        let event = event::read()?;
+    async fn handle_events(&mut self,event:Event) -> Result<()> {
         match event {
-            event::Event::Key(key_event) => {
+            Event::Key(key_event) => {
                 if let TerminalMode::INPUT = self.mode {
                     self.handle_msg_input(key_event)?;
                     return Ok(());
@@ -125,8 +134,8 @@ impl App {
         match keyevent.code {
             KeyCode::Char('q') => self.exit = true,
             KeyCode::Char('i') => self.mode = TerminalMode::INPUT,
-            KeyCode::Char('j') => self.messages.lock().unwrap().select_next(),
-            KeyCode::Char('k') => self.messages.lock().unwrap().select_previous(),
+            KeyCode::Char('j') => self.messages.select_next(),
+            KeyCode::Char('k') => self.messages.select_previous(),
             KeyCode::Enter => self.send_curr_inp().await.unwrap(),
             _ => {}
         }
@@ -148,16 +157,15 @@ impl App {
         if self.textarea.lines().len() < 1 {
             return Ok(());
         };
-        if let Some(tx) = &mut self.write {
+        if let Some(ws) = &mut self.write {
             let msg = Message {
                 kind: message::MessageKind::OUTGOING,
                 content: self.textarea.lines().join(" "),
                 time: DateTime::default(),
             };
-            let mut guard = self.messages.lock().unwrap();
-            guard.messages.push(msg.clone());
-
-            tx.send(msg.content.into()).await.unwrap();
+            let mut guard = self.messages.messages.write().unwrap();
+            guard.push(msg.clone());
+            ws.send(msg.content.into()).await.unwrap();
 
             self.textarea.delete_line_by_head();
             drop(guard);
@@ -194,8 +202,6 @@ impl Widget for &mut App {
 
         // MIDDLE
         self.messages
-            .lock()
-            .unwrap()
             .render(chunks[1].inner(Margin::new(0, 1)), buf);
 
         ///// Bottom
@@ -218,19 +224,19 @@ impl Widget for &mut App {
 
 async fn listen_messages(
     reader: Option<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
-    messages: Arc<Mutex<MessageList>>,
+    messages: Arc<RwLock<Vec<Message>>>,
 ) -> Result<()> {
     let mut reader = reader.unwrap();
     tokio::spawn(async move {
         while let Some(Ok(msg)) = reader.next().await {
-            let mut msgs = messages.lock().unwrap();
-
+            let mut lock = messages.write().unwrap();
             let info = Message {
                 content: msg.to_string(),
                 time: Local::now(),
                 kind: message::MessageKind::INCOMING,
             };
-            msgs.messages.push(info);
+            lock.push(info);
+            drop(lock);
         }
     });
     Ok(())

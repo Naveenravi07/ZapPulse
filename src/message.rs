@@ -2,16 +2,16 @@ use chrono::{DateTime, Local};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{
-        palette::tailwind::SLATE,
-        Color, Stylize,
-    },
+    style::{palette::tailwind::SLATE, Color, Stylize},
     text::{Line, Span},
     widgets::{
         Block, Borders, HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget,
     },
 };
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    sync::{Arc, RwLock},
+};
 
 #[derive(Debug, Clone)]
 pub enum MessageKind {
@@ -28,7 +28,7 @@ pub struct Message {
 
 #[derive(Default, Debug)]
 pub struct MessageList {
-    pub messages: Vec<Message>,
+    pub messages: Arc<RwLock<Vec<Message>>>,
     pub state: ListState,
 }
 
@@ -92,7 +92,10 @@ impl MessageList {
         let mut state = ListState::default();
         *state.offset_mut() = 0;
         state.select(Some(0));
-        MessageList { messages, state }
+        MessageList {
+            messages: Arc::new(RwLock::new(messages)),
+            state,
+        }
     }
 
     pub fn select_next(&mut self) {
@@ -107,6 +110,8 @@ impl Widget for &mut MessageList {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let items: Vec<ListItem> = self
             .messages
+            .read()
+            .unwrap()
             .iter()
             .enumerate()
             .map(|(i, message)| {
