@@ -16,4 +16,8 @@ ZapPulse uses vim-inspired keybindings for efficient navigation and interaction.
 - **`i`**: Enter input mode to type a message.  
 - **`j`**: Move down to the next message in the message list.  
 - **`k`**: Move up to the previous message in the message list.  
-- **`Enter`**: Send the currently typed message (while in input mode).  
+- **`Enter`**: Send the currently typed message (while in input mode).
+- **`gg`**: Scroll to top.
+- **`G`**: Scroll to bottom.  
+   
+
