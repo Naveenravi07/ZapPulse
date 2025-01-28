@@ -17,7 +17,6 @@ use std::{
 
 
 
-
 #[derive(Debug, Clone)]
 pub enum MessageKind {
     OUTGOING,
