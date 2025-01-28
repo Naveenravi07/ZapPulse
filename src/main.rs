@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use chrono::Local;
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use events::EventHandler;
@@ -15,8 +15,10 @@ use ratatui::{
     DefaultTerminal,
 };
 use std::{
+    collections::VecDeque,
     env::{self},
     sync::{Arc, RwLock},
+    time::{Duration, Instant},
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::Message as TungSteniteMsg;
@@ -26,8 +28,7 @@ mod events;
 mod message;
 use events::Event;
 
-
-
+const SEQUENCE_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Debug)]
 struct App {
@@ -36,6 +37,8 @@ struct App {
     mode: TerminalMode,
     write: Option<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, TungSteniteMsg>>,
     events: Option<EventHandler>,
+    last_key_time: Option<Instant>,
+    key_buffer: Vec<KeyCode>,
     exit: bool,
 }
 
@@ -53,7 +56,7 @@ impl Default for TerminalMode {
 
 impl Default for App {
     fn default() -> Self {
-        let msg_list: MessageList = MessageList::new(Vec::new());
+        let msg_list: MessageList = MessageList::new(VecDeque::new());
         Self {
             messages: msg_list,
             exit: false,
@@ -61,6 +64,8 @@ impl Default for App {
             textarea: TextArea::default(),
             write: None,
             events: None,
+            last_key_time: None,
+            key_buffer: Vec::new(),
         }
     }
 }
@@ -111,7 +116,7 @@ impl App {
         frame.render_widget(self, frame.area());
     }
 
-    async fn handle_events(&mut self,event:Event) -> Result<()> {
+    async fn handle_events(&mut self, event: Event) -> Result<()> {
         match event {
             Event::Key(key_event) => {
                 if let TerminalMode::INPUT = self.mode {
@@ -133,8 +138,28 @@ impl App {
             KeyCode::Char('i') => self.mode = TerminalMode::INPUT,
             KeyCode::Char('j') => self.messages.select_next(),
             KeyCode::Char('k') => self.messages.select_previous(),
+            KeyCode::Char('G') => self.messages.state.select_last(),
             KeyCode::Enter => self.send_curr_inp().await.unwrap(),
             _ => {}
+        }
+
+        if let Some(last_time) = self.last_key_time {
+            if last_time.elapsed() > SEQUENCE_TIMEOUT {
+                self.key_buffer.clear();
+            }
+        }
+
+        self.last_key_time = Some(Instant::now());
+        self.key_buffer.push(keyevent.code);
+
+        if self.key_buffer.len() > 2 {
+            self.key_buffer.clear();
+            return Ok(());
+        }
+        if self.key_buffer == [KeyCode::Char('g'), KeyCode::Char('g')] {
+            self.messages.state.select_first();
+            self.key_buffer.clear();
+            return Ok(());
         }
         Ok(())
     }
@@ -158,12 +183,13 @@ impl App {
             let msg = Message {
                 kind: message::MessageKind::OUTGOING,
                 content: self.textarea.lines().join(" "),
-                time: DateTime::default(),
+                time: Local::now(),
             };
-            let mut guard = self.messages.messages.write().unwrap();
-            guard.push(msg.clone());
-            ws.send(msg.content.into()).await.unwrap();
 
+            ws.send(msg.clone().content.into()).await.unwrap();
+            let mut guard = self.messages.messages.write().unwrap();
+            guard.push_front(msg);
+            self.messages.state.select_next();
             self.textarea.delete_line_by_head();
             drop(guard);
         }
@@ -219,10 +245,9 @@ impl Widget for &mut App {
     }
 }
 
-
 async fn listen_messages(
     reader: Option<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
-    messages: Arc<RwLock<Vec<Message>>>,
+    messages: Arc<RwLock<VecDeque<Message>>>,
 ) -> Result<()> {
     let mut reader = reader.unwrap();
     tokio::spawn(async move {
@@ -233,7 +258,7 @@ async fn listen_messages(
                 time: Local::now(),
                 kind: message::MessageKind::INCOMING,
             };
-            lock.push(info);
+            lock.push_front(info);
             drop(lock);
         }
     });

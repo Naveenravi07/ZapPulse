@@ -12,8 +12,7 @@ use ratatui::{
     },
 };
 use std::{
-    fmt::{self, Display},
-    sync::{Arc, RwLock},
+    collections::VecDeque, fmt::{self, Display}, sync::{Arc, RwLock}
 };
 
 
@@ -34,7 +33,7 @@ pub struct Message {
 
 #[derive(Default, Debug)]
 pub struct MessageList {
-    pub messages: Arc<RwLock<Vec<Message>>>,
+    pub messages: Arc<RwLock<VecDeque<Message>>>,
     pub state: ListState,
 }
 
@@ -95,7 +94,7 @@ impl Display for MessageKind {
 }
 
 impl MessageList {
-    pub fn new(messages: Vec<Message>) -> Self {
+    pub fn new(messages: VecDeque<Message>) -> Self {
         let mut state = ListState::default();
         *state.offset_mut() = 0;
         state.select(Some(0));
