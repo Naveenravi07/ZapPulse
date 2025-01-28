@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::{Local,DateTime};
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use events::EventHandler;
@@ -150,16 +150,17 @@ impl App {
         };
 
         let sel_max_ratio = format!("Info: {}/{}",selected+1,guard.len());
-        let area_b = popup_area(frame.area(), 60, 40);
+        let area_b = popup_area(frame.area(), 60, 30);
         
         let block = Block::bordered().title(sel_max_ratio);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([
-                Constraint::Length(2),
-                Constraint::Length(2),
-                Constraint::Length(2),
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
                 Constraint::Min(1),
             ])
             .split(area_b);
@@ -188,6 +189,11 @@ impl App {
             Span::from(format!("{} bytes", content_length)),
         ])]);
 
+        let date_para = Paragraph::new(vec![Line::from(vec![
+            Span::styled("Time: ", Style::default().fg(Color::Yellow)),
+            Span::from(format!("{} ", msg.time.to_string())),
+        ])]);
+
         let preview_text = match &content_type {
             ContentType::Text(content) => content.chars().take(100).collect::<String>(),
             ContentType::Json(content) => serde_json::to_string_pretty(content)
@@ -212,7 +218,8 @@ impl App {
         frame.render_widget(message_type, chunks[0]);
         frame.render_widget(cnt_type, chunks[1]);
         frame.render_widget(size_para, chunks[2]);
-        frame.render_widget(preview, chunks[3]);
+        frame.render_widget(date_para, chunks[3]);
+        frame.render_widget(preview, chunks[4]);
 
         return;
     }
